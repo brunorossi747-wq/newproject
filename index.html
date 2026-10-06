@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Meu Financeiro</title>
+<style>
+:root{--bg:#f5f6fa;--card:#fff;--tx:#1b2030;--mu:#6b7280;--bd:#e5e7eb;--pri:#4f46e5;--ok:#16a34a;--bad:#dc2626;--warn:#d97706}
+@media(prefers-color-scheme:dark){:root{--bg:#0f1220;--card:#181c30;--tx:#e8eaf3;--mu:#98a0b8;--bd:#2a2f4a;--pri:#818cf8;--ok:#4ade80;--bad:#f87171;--warn:#fbbf24}}
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.45 system-ui,sans-serif;background:var(--bg);color:var(--tx)}
+header{display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--card);border-bottom:1px solid var(--bd);position:sticky;top:0;z-index:5;flex-wrap:wrap}
+header h1{font-size:18px;margin:0;margin-right:auto}
+nav{display:flex;gap:4px;overflow-x:auto;padding:8px 12px;background:var(--card);border-bottom:1px solid var(--bd);position:sticky;top:53px;z-index:4}
+nav button{border:0;background:none;color:var(--mu);padding:8px 12px;border-radius:8px;cursor:pointer;font-size:14px;white-space:nowrap}
+nav button.on{background:var(--pri);color:#fff}
+main{max-width:1000px;margin:0 auto;padding:16px}
+.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px;margin-bottom:12px}
+.card h3{margin:0 0 8px;font-size:14px;color:var(--mu);font-weight:600}
+.big{font-size:24px;font-weight:700}
+.pos{color:var(--ok)}.neg{color:var(--bad)}.mu{color:var(--mu)}.warn{color:var(--warn)}
+table{width:100%;border-collapse:collapse}
+th,td{text-align:left;padding:7px 6px;border-bottom:1px solid var(--bd);font-size:14px}
+th{color:var(--mu);font-weight:600;font-size:12px}
+td.r,th.r{text-align:right}
+form{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));align-items:end}
+label{display:flex;flex-direction:column;font-size:12px;color:var(--mu);gap:3px}
+input,select{padding:8px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font:inherit;width:100%}
+button.b{background:var(--pri);color:#fff;border:0;padding:9px 14px;border-radius:8px;cursor:pointer;font:inherit}
+button.s{background:none;border:1px solid var(--bd);color:var(--tx);padding:6px 10px;border-radius:8px;cursor:pointer;font:inherit}
+button.x{background:none;border:0;color:var(--bad);cursor:pointer;font-size:16px}
+.bar{height:8px;background:var(--bd);border-radius:6px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--pri)}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.tag{font-size:11px;padding:2px 7px;border-radius:99px;background:var(--bd);color:var(--mu)}
+svg text{fill:var(--mu);font-size:10px}
+.scroll{overflow-x:auto}
+</style>
+</head>
+<body>
+<header>
+  <h1>💰 Meu Financeiro</h1>
+  <input type="month" id="mes" style="width:auto">
+  <button class="s" onclick="exportar()">Exportar</button>
+  <button class="s" onclick="document.getElementById('imp').click()">Importar</button>
+  <input type="file" id="imp" accept=".json" hidden onchange="importar(this)">
+</header>
+<nav id="nav"></nav>
+<main id="app"></main>
+
+<script>
+/* ---------- util ---------- */
+const $=s=>document.querySelector(s);
+const uid=()=>Math.random().toString(36).slice(2,10);
+const brl=v=>(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+const pct=v=>(v||0).toFixed(1).replace('.',',')+'%';
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const hoje=()=>new Date().toISOString().slice(0,10);
+const ym=d=>d.slice(0,7);
+const addMes=(m,n)=>{const [y,mo]=m.split('-').map(Number);const d=new Date(y,mo-1+n,1);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')};
+const nomeMes=m=>{const [y,mo]=m.split('-');return['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'][mo-1]+'/'+y.slice(2)};
+const COR=['#4f46e5','#06b6d4','#16a34a','#f59e0b','#ef4444','#a855f7','#ec4899','#64748b','#84cc16','#0ea5e9'];
+
+/* ---------- estado ---------- */
+const CATS_D=['Moradia','Alimentação','Transporte','Saúde','Educação','Lazer','Compras','Assinaturas','Impostos','Seguros','Outros'];
+const CATS_R=['Salário','Freelance','Rendimentos','Outras receitas'];
+const KEY='financeiro_v1';
+let S=carregar();
+function carregar(){
+  try{const d=JSON.parse(localStorage.getItem(KEY));if(d)return d}catch(e){}
+  return{contas:[{id:uid(),nome:'Conta corrente',tipo:'Corrente',saldo:0}],lanc:[],rec:[],orc:{},bens:[],dividas:[],inv:[],seg:[],hist:{},cfg:{reservaMeses:6,rendaAlvo:0}};
+}
+function salvar(){
+  const m=hoje().slice(0,7);S.hist[m]=patrimonio().total;
+  localStorage.setItem(KEY,JSON.stringify(S));
+}
+function exportar(){
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(S,null,1)],{type:'application/json'}));
+  a.download='financeiro-'+hoje()+'.json';a.click();
+}
+function importar(el){
+  const f=el.files[0];if(!f)return;
+  f.text().then(t=>{try{S=JSON.parse(t);salvar();render()}catch(e){alert('Arquivo inválido')}});
+}
+
+/* ---------- cálculos ---------- */
+const sinal=l=>l.tipo==='receita'?1:-1;
+function saldoConta(c){
+  let s=+c.saldo||0;
+  S.lanc.forEach(l=>{if(!l.pago&&l.data>hoje())return;
+    if(l.tipo==='transf'){if(l.conta===c.id)s-=l.valor;if(l.destino===c.id)s+=l.valor}
+    else if(l.conta===c.id)s+=sinal(l)*l.valor});
+  return s;
+}
+function patrimonio(){
+  const liquido=S.contas.reduce((a,c)=>a+saldoConta(c),0);
+  const inv=S.inv.reduce((a,i)=>a+(+i.atual||0),0);
+  const bens=S.bens.reduce((a,b)=>a+(+b.valor||0),0);
+  const div=S.dividas.reduce((a,d)=>a+(+d.saldo||0),0);
+  return{liquido,inv,bens,div,total:liquido+inv+bens-div};
+}
+const doMes=m=>S.lanc.filter(l=>ym(l.data)===m&&l.tipo!=='transf');
+const soma=(a,t)=>a.filter(l=>l.tipo===t).reduce((x,l)=>x+l.valor,0);
+function porCat(m){const o={};doMes(m).filter(l=>l.tipo==='despesa').forEach(l=>o[l.cat]=(o[l.cat]||0)+l.valor);return o}
+function mediaDespesa(n=3){
+  const m0=hoje().slice(0,7);let t=0,k=0;
+  for(let i=1;i<=n;i++){const x=soma(doMes(addMes(m0,-i)),'despesa');if(x>0){t+=x;k++}}
+  return k?t/k:soma(doMes(m0),'despesa');
+}
+/* projeção: saldo líquido + pendentes futuros + recorrentes */
+function projecao(n=12){
+  const m0=hoje().slice(0,7);let saldo=S.contas.reduce((a,c)=>a+saldoConta(c),0);
+  const out=[];
+  for(let i=0;i<=n;i++){
+    const m=addMes(m0,i);let r=0,d=0;
+    S.lanc.filter(l=>ym(l.data)===m&&l.tipo!=='transf'&&(l.data>hoje()||(!l.pago&&false))).forEach(l=>l.tipo==='receita'?r+=l.valor:d+=l.valor);
+    S.rec.forEach(x=>{if(x.ate&&x.ate<m)return;if(i===0&&+hoje().slice(8)>x.dia)return;
+      // não duplicar se já lançado manualmente neste mês
+      x.tipo==='receita'?r+=x.valor:d+=x.valor});
+    if(i>0||r||d)saldo+=r-d;
+    out.push({m,r,d,saldo});
+  }
+  return out;
+}
+
+/* ---------- gráficos ---------- */
+function donut(dados){
+  const tot=dados.reduce((a,x)=>a+x.v,0);if(!tot)return'<p class="mu">Sem dados.</p>';
+  let ang=-Math.PI/2,p='';
+  dados.forEach((x,i)=>{
+    const a=x.v/tot*2*Math.PI,r=60,c=70;
+    const x1=c+r*Math.cos(ang),y1=c+r*Math.sin(ang),x2=c+r*Math.cos(ang+a),y2=c+r*Math.sin(ang+a);
+    p+=dados.length===1?`<circle cx="70" cy="70" r="60" fill="none" stroke="${COR[i%10]}" stroke-width="28"/>`:
+      `<path d="M${x1},${y1}A${r},${r} 0 ${a>Math.PI?1:0} 1 ${x2},${y2}" fill="none" stroke="${COR[i%10]}" stroke-width="28"/>`;
+    ang+=a;
+  });
+  const leg=dados.map((x,i)=>`<div class="row" style="font-size:13px"><span style="width:10px;height:10px;border-radius:2px;background:${COR[i%10]}"></span>${esc(x.k)} <span class="mu">${pct(x.v/tot*100)}</span><b style="margin-left:auto">${brl(x.v)}</b></div>`).join('');
+  return`<div class="row" style="align-items:flex-start"><svg width="140" height="140">${p}</svg><div style="flex:1;min-width:160px">${leg}</div></div>`;
+}
+function linha(pts,key='saldo'){
+  if(pts.length<2)return'';
+  const W=600,H=170,P=28,v=pts.map(p=>p[key]),mn=Math.min(0,...v),mx=Math.max(1,...v);
+  const X=i=>P+i*(W-P*2)/(pts.length-1),Y=y=>H-P-(y-mn)/(mx-mn||1)*(H-P*2);
+  const d=pts.map((p,i)=>(i?'L':'M')+X(i)+','+Y(p[key])).join('');
+  const lbl=pts.map((p,i)=>i%2?'':`<text x="${X(i)}" y="${H-8}" text-anchor="middle">${nomeMes(p.m||p.k)}</text>`).join('');
+  return`<svg viewBox="0 0 ${W} ${H}" width="100%"><line x1="${P}" x2="${W-P}" y1="${Y(0)}" y2="${Y(0)}" stroke="var(--bd)"/><path d="${d}" fill="none" stroke="var(--pri)" stroke-width="2.5"/>${pts.map((p,i)=>`<circle cx="${X(i)}" cy="${Y(p[key])}" r="3" fill="var(--pri)"><title>${nomeMes(p.m||p.k)}: ${brl(p[key])}</title></circle>`).join('')}${lbl}<text x="${P}" y="12">${brl(mx)}</text><text x="${P}" y="${H-P+12}">${brl(mn)}</text></svg>`;
+}
+function barras(meses){
+  const W=600,H=170,P=28,mx=Math.max(1,...meses.flatMap(x=>[x.r,x.d])),bw=(W-P*2)/meses.length;
+  return`<svg viewBox="0 0 ${W} ${H}" width="100%">${meses.map((x,i)=>{
+    const h1=x.r/mx*(H-P*2),h2=x.d/mx*(H-P*2),x0=P+i*bw;
+    return`<rect x="${x0+bw*.1}" y="${H-P-h1}" width="${bw*.38}" height="${h1}" fill="var(--ok)"><title>Receitas ${brl(x.r)}</title></rect><rect x="${x0+bw*.52}" y="${H-P-h2}" width="${bw*.38}" height="${h2}" fill="var(--bad)"><title>Despesas ${brl(x.d)}</title></rect><text x="${x0+bw/2}" y="${H-10}" text-anchor="middle">${nomeMes(x.m)}</text>`}).join('')}</svg>`;
+}
+
+/* ---------- UI helpers ---------- */
+const opt=(arr,sel)=>arr.map(x=>`<option value="${esc(x.id??x)}" ${(x.id??x)===sel?'selected':''}>${esc(x.nome??x)}</option>`).join('');
+const nomeConta=id=>(S.contas.find(c=>c.id===id)||{nome:'—'}).nome;
+const fd=d=>d.split('-').reverse().join('/');
+function f(form){const o={};new FormData(form).forEach((v,k)=>o[k]=v);return o}
+function del(col,id){if(confirm('Remover?')){S[col]=S[col].filter(x=>x.id!==id);salvar();render()}}
+
+/* ---------- telas ---------- */
+const TELAS={
+painel(){
+  const m=$('#mes').value,L=doMes(m),r=soma(L,'receita'),d=soma(L,'despesa'),p=patrimonio();
+  const meses=[...Array(6)].map((_,i)=>{const mm=addMes(m,i-5),x=doMes(mm);return{m:mm,r:soma(x,'receita'),d:soma(x,'despesa')}});
+  const taxa=r?(r-d)/r*100:0;
+  const cats=Object.entries(porCat(m)).sort((a,b)=>b[1]-a[1]).map(([k,v])=>({k,v}));
+  return`<div class="grid">
+   <div class="card"><h3>Receitas do mês</h3><div class="big pos">${brl(r)}</div></div>
+   <div class="card"><h3>Despesas do mês</h3><div class="big neg">${brl(d)}</div></div>
+   <div class="card"><h3>Resultado</h3><div class="big ${r-d>=0?'pos':'neg'}">${brl(r-d)}</div><span class="mu">Taxa de poupança ${pct(taxa)}</span></div>
+   <div class="card"><h3>Patrimônio líquido</h3><div class="big">${brl(p.total)}</div></div></div>
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
+   <div class="card"><h3>Receitas × despesas (6 meses)</h3>${barras(meses)}</div>
+   <div class="card"><h3>Gastos por categoria</h3>${donut(cats)}</div></div>
+  ${alertas()}`;
+},
+lancamentos(){
+  const m=$('#mes').value,L=S.lanc.filter(l=>ym(l.data)===m).sort((a,b)=>b.data.localeCompare(a.data));
+  return`<div class="card"><h3>Novo lançamento</h3>
+  <form onsubmit="addLanc(event)">
+   <label>Tipo<select name="tipo" onchange="this.form.destino.parentElement.style.display=this.value==='transf'?'':'none'"><option value="despesa">Despesa</option><option value="receita">Receita</option><option value="transf">Transferência</option></select></label>
+   <label>Data<input type="date" name="data" value="${hoje()}" required></label>
+   <label>Descrição<input name="desc" required></label>
+   <label>Valor<input type="number" step="0.01" min="0.01" name="valor" required></label>
+   <label>Conta<select name="conta">${opt(S.contas)}</select></label>
+   <label style="display:none">Destino<select name="destino">${opt(S.contas)}</select></label>
+   <label>Categoria<input name="cat" list="cats" placeholder="Alimentação"></label>
+   <label>Parcelas<input type="number" name="parc" min="1" value="1"></label>
+   <button class="b">Adicionar</button></form>
+   <datalist id="cats">${[...CATS_D,...CATS_R].map(c=>`<option>${c}</option>`).join('')}</datalist></div>
+  <div class="card scroll"><h3>Lançamentos de ${nomeMes(m)}</h3><table><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Conta</th><th class="r">Valor</th><th></th></tr>
+  ${L.map(l=>`<tr><td>${fd(l.data)}</td><td>${esc(l.desc)}${l.data>hoje()?' <span class="tag">futuro</span>':''}</td><td>${esc(l.cat||'')}</td><td>${esc(nomeConta(l.conta))}${l.tipo==='transf'?' → '+esc(nomeConta(l.destino)):''}</td><td class="r ${l.tipo==='receita'?'pos':l.tipo==='despesa'?'neg':''}">${l.tipo==='despesa'?'−':''}${brl(l.valor)}</td><td><button class="x" onclick="del('lanc','${l.id}')">×</button></td></tr>`).join('')||'<tr><td colspan="6" class="mu">Nenhum lançamento neste mês.</td></tr>'}</table></div>`;
+},
+gastos(){
+  const m=$('#mes').value,pc=porCat(m),tot=Object.values(pc).reduce((a,b)=>a+b,0);
+  const cats=[...new Set([...CATS_D,...Object.keys(pc),...Object.keys(S.orc)])];
+  const ant=porCat(addMes(m,-1));
+  return`<div class="card"><h3>Orçamento por categoria — ${nomeMes(m)} (total gasto ${brl(tot)})</h3>
+  ${cats.map(c=>{const g=pc[c]||0,o=+S.orc[c]||0,p=o?g/o*100:0;
+   return`<div style="margin:10px 0"><div class="row"><b>${esc(c)}</b><span class="mu">mês anterior ${brl(ant[c]||0)}</span>
+   <span style="margin-left:auto" class="${o&&g>o?'neg':''}">${brl(g)}${o?' / ':''}</span>
+   <input type="number" style="width:110px" placeholder="limite" value="${o||''}" onchange="S.orc['${esc(c)}']=+this.value;salvar();render()"></div>
+   ${o?`<div class="bar"><i style="width:${Math.min(100,p)}%;background:${p>100?'var(--bad)':p>80?'var(--warn)':'var(--ok)'}"></i></div>`:''}</div>`}).join('')}</div>
+  <div class="card"><h3>Distribuição</h3>${donut(Object.entries(pc).sort((a,b)=>b[1]-a[1]).map(([k,v])=>({k,v})))}</div>`;
+},
+futuro(){
+  const pr=projecao(12),neg=pr.find(x=>x.saldo<0);
+  return`<div class="card"><h3>Projeção do saldo (12 meses)</h3>${linha(pr)}
+   ${neg?`<p class="neg">⚠ Saldo previsto negativo em ${nomeMes(neg.m)}.</p>`:'<p class="pos">Saldo previsto positivo em todo o período.</p>'}</div>
+  <div class="card"><h3>Lançamentos recorrentes (salário, aluguel, assinaturas…)</h3>
+  <form onsubmit="addRec(event)"><label>Tipo<select name="tipo"><option value="despesa">Despesa</option><option value="receita">Receita</option></select></label>
+   <label>Descrição<input name="desc" required></label><label>Valor<input type="number" step="0.01" name="valor" required></label>
+   <label>Dia do mês<input type="number" min="1" max="31" name="dia" value="5"></label>
+   <label>Categoria<input name="cat" list="cats"></label><label>Até (opcional)<input type="month" name="ate"></label>
+   <button class="b">Adicionar</button></form>
+   <table style="margin-top:10px">${S.rec.map(x=>`<tr><td>${esc(x.desc)}</td><td>dia ${x.dia}</td><td>${esc(x.cat||'')}</td><td class="r ${x.tipo==='receita'?'pos':'neg'}">${brl(x.valor)}</td><td><button class="x" onclick="del('rec','${x.id}')">×</button></td></tr>`).join('')}</table></div>
+  <div class="card scroll"><h3>Mês a mês</h3><table><tr><th>Mês</th><th class="r">Receitas</th><th class="r">Despesas</th><th class="r">Saldo final</th></tr>
+  ${pr.map(x=>`<tr><td>${nomeMes(x.m)}</td><td class="r pos">${brl(x.r)}</td><td class="r neg">${brl(x.d)}</td><td class="r ${x.saldo<0?'neg':''}">${brl(x.saldo)}</td></tr>`).join('')}</table>
+  <p class="mu">Inclui lançamentos já agendados (parcelas) e recorrentes. Parcelas futuras são criadas em "Lançamentos".</p></div>`;
+},
+patrimonio(){
+  const p=patrimonio(),h=Object.entries(S.hist).sort().map(([k,v])=>({k,saldo:v}));
+  return`<div class="grid">
+   <div class="card"><h3>Patrimônio líquido</h3><div class="big">${brl(p.total)}</div></div>
+   <div class="card"><h3>Disponível (contas)</h3><div class="big">${brl(p.liquido)}</div></div>
+   <div class="card"><h3>Investimentos</h3><div class="big">${brl(p.inv)}</div></div>
+   <div class="card"><h3>Bens</h3><div class="big">${brl(p.bens)}</div></div>
+   <div class="card"><h3>Dívidas</h3><div class="big neg">${brl(p.div)}</div></div></div>
+  <div class="card"><h3>Composição dos ativos</h3>${donut([{k:'Contas',v:Math.max(0,p.liquido)},{k:'Investimentos',v:p.inv},{k:'Bens',v:p.bens}].filter(x=>x.v>0))}</div>
+  <div class="card"><h3>Evolução (registrada a cada visita no mês)</h3>${linha(h)||'<p class="mu">Histórico começa a ser formado agora.</p>'}</div>
+  <div class="card"><h3>Bens (imóveis, veículos, outros)</h3>
+   <form onsubmit="addGen(event,'bens')"><label>Nome<input name="nome" required></label><label>Tipo<select name="tipo"><option>Imóvel</option><option>Veículo</option><option>Outro</option></select></label><label>Valor atual<input type="number" step="0.01" name="valor" required></label><button class="b">Adicionar</button></form>
+   <table style="margin-top:10px">${S.bens.map(b=>`<tr><td>${esc(b.nome)}</td><td><span class="tag">${esc(b.tipo)}</span></td><td class="r"><input type="number" style="width:130px" value="${b.valor}" onchange="upd('bens','${b.id}','valor',+this.value)"></td><td><button class="x" onclick="del('bens','${b.id}')">×</button></td></tr>`).join('')}</table></div>
+  <div class="card"><h3>Dívidas e financiamentos</h3>
+   <form onsubmit="addGen(event,'dividas')"><label>Nome<input name="nome" required></label><label>Saldo devedor<input type="number" step="0.01" name="saldo" required></label><label>Juros % a.m.<input type="number" step="0.01" name="juros"></label><button class="b">Adicionar</button></form>
+   <table style="margin-top:10px">${S.dividas.map(b=>`<tr><td>${esc(b.nome)}</td><td class="mu">${b.juros?b.juros+'% a.m.':''}</td><td class="r"><input type="number" style="width:130px" value="${b.saldo}" onchange="upd('dividas','${b.id}','saldo',+this.value)"></td><td><button class="x" onclick="del('dividas','${b.id}')">×</button></td></tr>`).join('')}</table></div>`;
+},
+investimentos(){
+  const tot=S.inv.reduce((a,i)=>a+ +i.atual,0),ap=S.inv.reduce((a,i)=>a+ +i.aportado,0);
+  const cl={};S.inv.forEach(i=>cl[i.classe]=(cl[i.classe]||0)+ +i.atual);
+  return`<div class="grid"><div class="card"><h3>Total investido (valor atual)</h3><div class="big">${brl(tot)}</div></div>
+   <div class="card"><h3>Total aportado</h3><div class="big">${brl(ap)}</div></div>
+   <div class="card"><h3>Rentabilidade</h3><div class="big ${tot>=ap?'pos':'neg'}">${brl(tot-ap)}</div><span class="mu">${ap?pct((tot-ap)/ap*100):'—'}</span></div></div>
+  <div class="card"><h3>Novo investimento</h3><form onsubmit="addGen(event,'inv')">
+   <label>Nome<input name="nome" required placeholder="Tesouro Selic 2029"></label>
+   <label>Classe<select name="classe"><option>Renda fixa</option><option>Ações</option><option>FIIs</option><option>Internacional</option><option>Cripto</option><option>Previdência</option><option>Outros</option></select></label>
+   <label>Valor aportado<input type="number" step="0.01" name="aportado" required></label><label>Valor atual<input type="number" step="0.01" name="atual" required></label><button class="b">Adicionar</button></form></div>
+  <div class="card scroll"><table><tr><th>Ativo</th><th>Classe</th><th class="r">Aportado</th><th class="r">Atual</th><th class="r">Result.</th><th></th></tr>
+  ${S.inv.map(i=>{const r=i.atual-i.aportado;return`<tr><td>${esc(i.nome)}</td><td><span class="tag">${esc(i.classe)}</span></td><td class="r">${brl(+i.aportado)}</td><td class="r"><input type="number" style="width:120px" value="${i.atual}" onchange="upd('inv','${i.id}','atual',+this.value)"></td><td class="r ${r>=0?'pos':'neg'}">${pct(i.aportado?r/i.aportado*100:0)}</td><td><button class="x" onclick="del('inv','${i.id}')">×</button></td></tr>`}).join('')}</table></div>
+  <div class="card"><h3>Alocação por classe</h3>${donut(Object.entries(cl).map(([k,v])=>({k,v})))}</div>`;
+},
+protecao(){
+  const p=patrimonio(),med=mediaDespesa(),meta=med*S.cfg.reservaMeses;
+  const reserva=p.liquido+S.inv.filter(i=>i.classe==='Renda fixa').reduce((a,i)=>a+ +i.atual,0);
+  const prem=S.seg.reduce((a,s)=>a+ +s.premio,0);
+  const prox=S.seg.filter(s=>s.venc).sort((a,b)=>a.venc.localeCompare(b.venc));
+  return`<div class="card"><h3>Reserva de emergência</h3>
+   <div class="row"><span>Meta:</span><input type="number" style="width:70px" value="${S.cfg.reservaMeses}" onchange="S.cfg.reservaMeses=+this.value;salvar();render()"><span>meses de despesas (média ${brl(med)}/mês = ${brl(meta)})</span></div>
+   <div class="bar" style="margin:10px 0"><i style="width:${Math.min(100,meta?reserva/meta*100:0)}%;background:${reserva>=meta?'var(--ok)':'var(--warn)'}"></i></div>
+   <div>Você tem <b>${brl(reserva)}</b> (contas + renda fixa) — cobre <b>${med?(reserva/med).toFixed(1).replace('.',','):'—'}</b> meses. ${reserva>=meta?'<span class="pos">Meta atingida ✔</span>':`<span class="warn">Faltam ${brl(meta-reserva)}</span>`}</div></div>
+  <div class="card"><h3>Seguros e proteções (vida, saúde, auto, residencial…)</h3><form onsubmit="addGen(event,'seg')">
+   <label>Nome<input name="nome" required placeholder="Seguro de vida"></label>
+   <label>Tipo<select name="tipo"><option>Vida</option><option>Saúde</option><option>Auto</option><option>Residencial</option><option>Invalidez</option><option>Outro</option></select></label>
+   <label>Cobertura<input type="number" step="0.01" name="cobertura"></label><label>Prêmio mensal<input type="number" step="0.01" name="premio" required></label>
+   <label>Vencimento<input type="date" name="venc"></label><button class="b">Adicionar</button></form>
+   <table style="margin-top:10px"><tr><th>Seguro</th><th>Tipo</th><th class="r">Cobertura</th><th class="r">Prêmio/mês</th><th>Vence</th><th></th></tr>
+   ${S.seg.map(s=>{const dias=s.venc?Math.round((new Date(s.venc)-new Date(hoje()))/864e5):null;
+    return`<tr><td>${esc(s.nome)}</td><td><span class="tag">${esc(s.tipo)}</span></td><td class="r">${brl(+s.cobertura)}</td><td class="r">${brl(+s.premio)}</td><td class="${dias!==null&&dias<=30?'neg':''}">${s.venc?fd(s.venc)+(dias<=30?' ('+dias+'d)':''):'—'}</td><td><button class="x" onclick="del('seg','${s.id}')">×</button></td></tr>`}).join('')}</table>
+   <p class="mu">Custo total de proteção: <b>${brl(prem)}</b>/mês. ${prox.length?'':'Nenhum seguro cadastrado.'}</p></div>
+  <div class="card"><h3>Checklist</h3>${['Vida','Saúde','Auto','Residencial'].map(t=>`<div>${S.seg.some(s=>s.tipo===t)?'✅':'⬜'} Seguro ${t}</div>`).join('')}<div>${reserva>=meta?'✅':'⬜'} Reserva de emergência completa</div></div>`;
+},
+contas(){
+  return`<div class="card"><h3>Nova conta</h3><form onsubmit="addGen(event,'contas')">
+   <label>Nome<input name="nome" required placeholder="Nubank"></label>
+   <label>Tipo<select name="tipo"><option>Corrente</option><option>Poupança</option><option>Cartão</option><option>Dinheiro</option><option>Corretora</option></select></label>
+   <label>Saldo inicial<input type="number" step="0.01" name="saldo" value="0"></label><button class="b">Adicionar</button></form></div>
+  <div class="card"><table><tr><th>Conta</th><th>Tipo</th><th class="r">Saldo inicial</th><th class="r">Saldo atual</th><th></th></tr>
+  ${S.contas.map(c=>`<tr><td>${esc(c.nome)}</td><td><span class="tag">${esc(c.tipo)}</span></td><td class="r"><input type="number" style="width:120px" value="${c.saldo}" onchange="upd('contas','${c.id}','saldo',+this.value)"></td><td class="r ${saldoConta(c)<0?'neg':''}"><b>${brl(saldoConta(c))}</b></td><td><button class="x" onclick="if(S.contas.length>1)del('contas','${c.id}')">×</button></td></tr>`).join('')}</table>
+  <p class="mu">Cartão de crédito: use tipo "Cartão" e lance as compras como despesas; pague a fatura com uma transferência.</p></div>`;
+}};
+
+function alertas(){
+  const m=$('#mes').value,pc=porCat(m),a=[];
+  Object.entries(S.orc).forEach(([c,o])=>{if(o&&(pc[c]||0)>o)a.push(`Categoria <b>${esc(c)}</b> estourou o orçamento (${brl(pc[c])} de ${brl(o)}).`)});
+  S.seg.forEach(s=>{if(s.venc){const d=Math.round((new Date(s.venc)-new Date(hoje()))/864e5);if(d<=30)a.push(`Seguro <b>${esc(s.nome)}</b> vence em ${d} dias.`)}});
+  const neg=projecao(6).find(x=>x.saldo<0);if(neg)a.push(`Saldo previsto negativo em ${nomeMes(neg.m)}.`);
+  return a.length?`<div class="card"><h3>Alertas</h3>${a.map(x=>`<div class="warn">⚠ ${x}</div>`).join('')}</div>`:'';
+}
+
+/* ---------- ações ---------- */
+function addLanc(e){
+  e.preventDefault();const o=f(e.target),n=Math.max(1,+o.parc||1),v=+o.valor;
+  for(let i=0;i<n;i++){
+    const d=new Date(o.data+'T12:00');d.setMonth(d.getMonth()+i);
+    S.lanc.push({id:uid(),tipo:o.tipo,data:d.toISOString().slice(0,10),desc:o.desc+(n>1?` (${i+1}/${n})`:''),valor:+(v/n).toFixed(2),conta:o.conta,destino:o.destino,cat:o.cat||(o.tipo==='receita'?'Outras receitas':'Outros')});
+  }
+  salvar();render();
+}
+function addRec(e){e.preventDefault();const o=f(e.target);S.rec.push({id:uid(),...o,valor:+o.valor,dia:+o.dia});salvar();render()}
+function addGen(e,col){e.preventDefault();S[col].push({id:uid(),...f(e.target)});salvar();render()}
+function upd(col,id,k,v){S[col].find(x=>x.id===id)[k]=v;salvar();render()}
+
+/* ---------- roteamento ---------- */
+const NOMES={painel:'Painel',lancamentos:'Lançamentos',gastos:'Gastos',futuro:'Futuro',patrimonio:'Patrimônio',investimentos:'Investimentos',protecao:'Proteção',contas:'Contas'};
+let tela=location.hash.slice(1)||'painel';
+function render(){
+  if(!TELAS[tela])tela='painel';
+  $('#nav').innerHTML=Object.entries(NOMES).map(([k,v])=>`<button class="${k===tela?'on':''}" onclick="ir('${k}')">${v}</button>`).join('');
+  $('#app').innerHTML=TELAS[tela]();
+}
+function ir(t){tela=t;location.hash=t;render()}
+$('#mes').value=hoje().slice(0,7);
+$('#mes').onchange=render;
+salvar();render();
+</script>
+</body>
+</html>
