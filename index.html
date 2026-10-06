@@ -1,20 +1,16 @@
-<!doctype html>
-<html lang="pt-BR">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Meu Financeiro</title>
 <style>
 :root{--bg:#f5f6fa;--card:#fff;--tx:#1b2030;--mu:#6b7280;--bd:#e5e7eb;--pri:#4f46e5;--ok:#16a34a;--bad:#dc2626;--warn:#d97706}
-@media(prefers-color-scheme:dark){:root{--bg:#0f1220;--card:#181c30;--tx:#e8eaf3;--mu:#98a0b8;--bd:#2a2f4a;--pri:#818cf8;--ok:#4ade80;--bad:#f87171;--warn:#fbbf24}}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1220;--card:#181c30;--tx:#e8eaf3;--mu:#98a0b8;--bd:#2a2f4a;--pri:#818cf8;--ok:#4ade80;--bad:#f87171;--warn:#fbbf24;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0f1220;--card:#181c30;--tx:#e8eaf3;--mu:#98a0b8;--bd:#2a2f4a;--pri:#818cf8;--ok:#4ade80;--bad:#f87171;--warn:#fbbf24;color-scheme:dark}
 *{box-sizing:border-box}
-body{margin:0;font:15px/1.45 system-ui,sans-serif;background:var(--bg);color:var(--tx)}
-header{display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--card);border-bottom:1px solid var(--bd);position:sticky;top:0;z-index:5;flex-wrap:wrap}
+body{margin:0;min-width:0;font:15px/1.45 system-ui,sans-serif;background:var(--bg);color:var(--tx)}
+header{display:flex;padding-inline:16px;align-items:center;gap:12px;padding:12px 16px;background:var(--card);border-bottom:1px solid var(--bd);position:sticky;top:env(safe-area-inset-top,0px);z-index:5;flex-wrap:wrap}
 header h1{font-size:18px;margin:0;margin-right:auto}
-nav{display:flex;gap:4px;overflow-x:auto;padding:8px 12px;background:var(--card);border-bottom:1px solid var(--bd);position:sticky;top:53px;z-index:4}
+nav{padding-inline:16px;display:flex;gap:4px;overflow-x:auto;padding-block:8px;background:var(--card);border-bottom:1px solid var(--bd);position:sticky;top:calc(env(safe-area-inset-top,0px) + 53px);z-index:4}
 nav button{border:0;background:none;color:var(--mu);padding:8px 12px;border-radius:8px;cursor:pointer;font-size:14px;white-space:nowrap}
 nav button.on{background:var(--pri);color:#fff}
-main{max-width:1000px;margin:0 auto;padding:16px}
+main{max-width:1000px;margin:0 auto;padding:16px;min-width:0}
 .grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
 .card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px;margin-bottom:12px}
 .card h3{margin:0 0 8px;font-size:14px;color:var(--mu);font-weight:600}
@@ -37,15 +33,16 @@ button.x{background:none;border:0;color:var(--bad);cursor:pointer;font-size:16px
 svg text{fill:var(--mu);font-size:10px}
 .scroll{overflow-x:auto}
 </style>
-</head>
-<body>
 <header>
   <h1>💰 Meu Financeiro</h1>
   <input type="month" id="mes" style="width:auto">
-  <button class="s" onclick="exportar()">Exportar</button>
-  <button class="s" onclick="document.getElementById('imp').click()">Importar</button>
+  <button class="s" onclick="exportar()">Backup</button>
+  <button class="s" onclick="document.getElementById('imp').click()">Abrir arquivo</button>
   <input type="file" id="imp" accept=".json" hidden onchange="importar(this)">
 </header>
+<div id="bk" class="card" hidden style="margin:12px 16px"><h3>Backup: copie este texto e guarde. Para restaurar, cole um backup aqui e clique em Restaurar.</h3>
+<textarea id="bkt" style="width:100%;height:90px;background:var(--bg);color:var(--tx);border:1px solid var(--bd);border-radius:8px"></textarea>
+<div class="row" style="margin-top:8px"><button class="b" onclick="navigator.clipboard.writeText($('#bkt').value).then(()=>$('#bkmsg').textContent='Copiado.',()=>$('#bkt').select())">Copiar</button><button class="s" onclick="restaurar($('#bkt').value)">Restaurar</button><button class="s" onclick="$('#bk').hidden=true">Fechar</button><span id="bkmsg" class="mu"></span></div></div>
 <nav id="nav"></nav>
 <main id="app"></main>
 
@@ -73,16 +70,16 @@ function carregar(){
 }
 function salvar(){
   const m=hoje().slice(0,7);S.hist[m]=patrimonio().total;
-  localStorage.setItem(KEY,JSON.stringify(S));
+  try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}
 }
 function exportar(){
-  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(S,null,1)],{type:'application/json'}));
-  a.download='financeiro-'+hoje()+'.json';a.click();
+  $('#bk').hidden=false;$('#bkt').value=JSON.stringify(S);$('#bkt').select();
 }
 function importar(el){
   const f=el.files[0];if(!f)return;
-  f.text().then(t=>{try{S=JSON.parse(t);salvar();render()}catch(e){alert('Arquivo inválido')}});
+  const r=new FileReader();r.onload=()=>restaurar(r.result);r.readAsText(f);
 }
+function restaurar(t){try{const d=JSON.parse(t);if(!d.contas)throw 0;S=d;salvar();$('#bk').hidden=true;render()}catch(e){$('#bkmsg').textContent='Texto inválido.'}}
 
 /* ---------- cálculos ---------- */
 const sinal=l=>l.tipo==='receita'?1:-1;
@@ -158,7 +155,7 @@ const opt=(arr,sel)=>arr.map(x=>`<option value="${esc(x.id??x)}" ${(x.id??x)===s
 const nomeConta=id=>(S.contas.find(c=>c.id===id)||{nome:'—'}).nome;
 const fd=d=>d.split('-').reverse().join('/');
 function f(form){const o={};new FormData(form).forEach((v,k)=>o[k]=v);return o}
-function del(col,id){if(confirm('Remover?')){S[col]=S[col].filter(x=>x.id!==id);salvar();render()}}
+function del(col,id){S[col]=S[col].filter(x=>x.id!==id);salvar();render()}
 
 /* ---------- telas ---------- */
 const TELAS={
@@ -316,5 +313,3 @@ $('#mes').value=hoje().slice(0,7);
 $('#mes').onchange=render;
 salvar();render();
 </script>
-</body>
-</html>
